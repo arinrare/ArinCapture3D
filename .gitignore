@@ -1,0 +1,47 @@
+# C++/CMake/Visual Studio
+build/
+dist/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.sln
+*.vcxproj*
+*.user
+*.obj
+*.pdb
+*.exe
+*.lib
+*.dll
+*.exp
+*.log
+*.idb
+*.ipch
+*.aps
+*.ncb
+*.sdf
+*.opensdf
+*.tlog
+*.lastbuildstate
+*.cache
+*.db
+*.VC.db
+*.VC.VC.opendb
+*.ilk
+*.manifest
+*.pch
+*.res
+*.rsp
+*.suo
+*.sbr
+*.scc
+*.vscode/
+# OS
+.DS_Store
+Thumbs.db
+# CMake presets
+CMakePresets.json
+CMakeUserPresets.json
+# Ninja
+.ninja_deps
+.ninja_log

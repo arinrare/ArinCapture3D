@@ -1,0 +1,27 @@
+// Resource script for ArinCapture
+// Add your icon file to the project directory (e.g., res/arincapture.ico)
+
+#include <winres.h>
+
+#include "resource.h"
+
+IDI_APPICON ICON "../res/arincapture.ico"
+
+IDD_DEPTH_DIALOG DIALOGEX 0, 0, 220, 112
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Stereo Settings"
+FONT 9, "Segoe UI"
+BEGIN
+	LTEXT           "Depth (1-20):", -1, 7, 8, 60, 10
+	CONTROL         "", IDC_DEPTH_SLIDER, "msctls_trackbar32", WS_TABSTOP | TBS_AUTOTICKS, 7, 20, 206, 18
+	LTEXT           "10", IDC_DEPTH_VALUE, 190, 8, 20, 10, SS_RIGHT
+
+	LTEXT           "Parallax strength (0-50%):", -1, 7, 44, 130, 10
+	CONTROL         "", IDC_PARALLAX_SLIDER, "msctls_trackbar32", WS_TABSTOP | TBS_AUTOTICKS, 7, 56, 206, 18
+	LTEXT           "35%", IDC_PARALLAX_VALUE, 184, 44, 30, 10, SS_RIGHT
+
+	PUSHBUTTON      "Reset", IDC_STEREO_RESET_DEFAULTS, 7, 88, 45, 14
+	PUSHBUTTON      "Next Mon", IDC_STEREO_NEXT_MONITOR, 56, 88, 55, 14
+	DEFPUSHBUTTON   "OK", IDOK, 116, 88, 45, 14
+	PUSHBUTTON      "Cancel", IDCANCEL, 168, 88, 45, 14
+END
