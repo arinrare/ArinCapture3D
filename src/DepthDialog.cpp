@@ -7,6 +7,10 @@
 
 #pragma comment(lib, "Comctl32.lib")
 
+static constexpr int kStereoDepthDefault = 10;
+static constexpr int kStereoParallaxDefaultPercent = 20;
+static constexpr int kStereoParallaxMaxPercent = 50;
+
 static void SetDepthValueText(HWND hDlg, int v) {
     TCHAR buf[32];
     wsprintf(buf, TEXT("%d"), v);
@@ -15,7 +19,7 @@ static void SetDepthValueText(HWND hDlg, int v) {
 
 static void SetParallaxValueText(HWND hDlg, int percent) {
     if (percent < 0) percent = 0;
-    if (percent > 100) percent = 100;
+    if (percent > kStereoParallaxMaxPercent) percent = kStereoParallaxMaxPercent;
     TCHAR buf[32];
     wsprintf(buf, TEXT("%d%%"), percent);
     SetDlgItemText(hDlg, IDC_PARALLAX_VALUE, buf);
@@ -27,10 +31,10 @@ struct StereoDialogState {
 
     bool modeless = false;
 
-    int originalDepth = 12;
-    int originalParallaxStrengthPercent = 50;
-    int workingDepth = 12;
-    int workingParallaxStrengthPercent = 50;
+    int originalDepth = kStereoDepthDefault;
+    int originalParallaxStrengthPercent = kStereoParallaxDefaultPercent;
+    int workingDepth = kStereoDepthDefault;
+    int workingParallaxStrengthPercent = kStereoParallaxDefaultPercent;
 
     std::function<void(int, int)> onPreview;
     std::function<void(bool, int, int)> onDone;
@@ -99,7 +103,7 @@ static void ApplyWorkingFromSliders(HWND hDlg, StereoDialogState* state) {
     if (depth < 1) depth = 1;
     if (depth > 20) depth = 20;
     if (parallaxStrength < 0) parallaxStrength = 0;
-    if (parallaxStrength > 100) parallaxStrength = 100;
+    if (parallaxStrength > kStereoParallaxMaxPercent) parallaxStrength = kStereoParallaxMaxPercent;
 
     state->workingDepth = depth;
     state->workingParallaxStrengthPercent = parallaxStrength;
@@ -122,7 +126,7 @@ static INT_PTR CALLBACK DepthDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
         if (hSlider) {
             SendMessage(hSlider, TBM_SETRANGE, TRUE, MAKELPARAM(1, 20));
             SendMessage(hSlider, TBM_SETTICFREQ, 1, 0);
-            int v = 10;
+            int v = kStereoDepthDefault;
             if (state) v = state->workingDepth;
             SendMessage(hSlider, TBM_SETPOS, TRUE, v);
             SetDepthValueText(hDlg, v);
@@ -130,14 +134,14 @@ static INT_PTR CALLBACK DepthDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
 
         HWND hParallaxSlider = GetDlgItem(hDlg, IDC_PARALLAX_SLIDER);
         if (hParallaxSlider) {
-            SendMessage(hParallaxSlider, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
+            SendMessage(hParallaxSlider, TBM_SETRANGE, TRUE, MAKELPARAM(0, kStereoParallaxMaxPercent));
             SendMessage(hParallaxSlider, TBM_SETTICFREQ, 10, 0);
-            int v = 50;
+            int v = kStereoParallaxDefaultPercent;
             if (state) {
                 v = state->workingParallaxStrengthPercent;
             }
             if (v < 0) v = 0;
-            if (v > 100) v = 100;
+            if (v > kStereoParallaxMaxPercent) v = kStereoParallaxMaxPercent;
             SendMessage(hParallaxSlider, TBM_SETPOS, TRUE, v);
             SetParallaxValueText(hDlg, v);
         }
@@ -157,8 +161,8 @@ static INT_PTR CALLBACK DepthDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
             auto* state = (StereoDialogState*)GetWindowLongPtr(hDlg, GWLP_USERDATA);
             if (!state) return TRUE;
 
-            state->workingDepth = 12;
-            state->workingParallaxStrengthPercent = 50;
+            state->workingDepth = kStereoDepthDefault;
+            state->workingParallaxStrengthPercent = kStereoParallaxDefaultPercent;
 
             HWND hDepth = GetDlgItem(hDlg, IDC_DEPTH_SLIDER);
             HWND hParallax = GetDlgItem(hDlg, IDC_PARALLAX_SLIDER);
@@ -232,7 +236,7 @@ bool DepthDialog::Show(HWND hWndParent, int& depthLevel, int& parallaxStrengthPe
     if (localDepth < 1) localDepth = 1;
     if (localDepth > 20) localDepth = 20;
     if (localParallaxStrength < 0) localParallaxStrength = 0;
-    if (localParallaxStrength > 100) localParallaxStrength = 100;
+    if (localParallaxStrength > kStereoParallaxMaxPercent) localParallaxStrength = kStereoParallaxMaxPercent;
 
     StereoDialogState state;
     state.outDepth = &localDepth;
@@ -269,7 +273,7 @@ HWND DepthDialog::ShowModeless(
     if (localDepth < 1) localDepth = 1;
     if (localDepth > 20) localDepth = 20;
     if (localParallaxStrength < 0) localParallaxStrength = 0;
-    if (localParallaxStrength > 100) localParallaxStrength = 100;
+    if (localParallaxStrength > kStereoParallaxMaxPercent) localParallaxStrength = kStereoParallaxMaxPercent;
 
     auto* state = new StereoDialogState();
     state->outDepth = nullptr;

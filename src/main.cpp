@@ -424,8 +424,8 @@ static bool g_windowPickFinalizePending = false;
 static HWINEVENTHOOK g_foregroundHook = nullptr;
 static int g_outputMonIndex = -1;
 static bool g_stereoEnabled = false;
-static int g_stereoDepthLevel = 12; // 1..20
-static int g_stereoParallaxStrengthPercent = 50; // 0..100
+static int g_stereoDepthLevel = 10; // 1..20
+static int g_stereoParallaxStrengthPercent = 20; // 0..50
 static HWND g_stereoSettingsDlgHwnd = nullptr;
 static int g_overlayPosIndex = 0; // 0=TL,1=TR,2=BL,3=BR,4=Center
 static bool g_clickThrough = false;

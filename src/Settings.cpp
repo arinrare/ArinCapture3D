@@ -118,8 +118,8 @@ AppSettings AppSettings::Load() {
     // First-run defaults (when there is no settings.ini yet).
     const bool firstRun = !FileExists(path);
     if (firstRun) {
-        s.stereoDepthLevel = 12;
-        s.stereoParallaxStrengthPercent = 50;
+        s.stereoDepthLevel = 10;
+        s.stereoParallaxStrengthPercent = 20;
     }
 
     s.stereoEnabled = (GetPrivateProfileIntW(L"Stereo", L"Enabled", s.stereoEnabled ? 1 : 0, path.c_str()) != 0);
@@ -133,7 +133,7 @@ AppSettings AppSettings::Load() {
                 v = 50;
             }
         }
-        s.stereoParallaxStrengthPercent = ClampInt(v, 0, 100);
+        s.stereoParallaxStrengthPercent = ClampInt(v, 0, 50);
     }
 
     s.vsyncEnabled = (GetPrivateProfileIntW(L"Output", L"VSyncEnabled", s.vsyncEnabled ? 1 : 0, path.c_str()) != 0);
@@ -158,7 +158,7 @@ void AppSettings::Save() const {
 
     WriteBool(path, L"Stereo", L"Enabled", stereoEnabled);
     WriteInt(path, L"Stereo", L"DepthLevel", ClampInt(stereoDepthLevel, 1, 20));
-    WriteInt(path, L"Stereo", L"ParallaxStrengthPercent", ClampInt(stereoParallaxStrengthPercent, 0, 100));
+    WriteInt(path, L"Stereo", L"ParallaxStrengthPercent", ClampInt(stereoParallaxStrengthPercent, 0, 50));
 
     WriteBool(path, L"Output", L"VSyncEnabled", vsyncEnabled);
     WriteBool(path, L"Output", L"ClickThrough", clickThrough);

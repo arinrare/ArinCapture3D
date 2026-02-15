@@ -7,7 +7,7 @@ class DepthDialog {
 public:
     // Shows a modal dialog to choose stereo settings.
     // - depthLevel: [1, 20]
-    // - parallaxStrengthPercent: [0, 100]
+    // - parallaxStrengthPercent: [0, 50]
     // - onPreview: called whenever the user drags a slider (and on Cancel to revert)
     // Returns true if the user pressed OK.
     bool Show(HWND hWndParent, int& depthLevel, int& parallaxStrengthPercent,

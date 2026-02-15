@@ -158,15 +158,15 @@ void CSDepthRaw(uint3 tid : SV_DispatchThreadID)
     g_soft = lerp(g_soft, g_soft * 0.92, spec_pop * 0.15);
 
     // === CURVE LAYERS (5-layer depth) ===
-    float dark_push = pow(1.0 - g_soft, 1.15;
+    float dark_push = pow(1.0 - g_soft, 2.0);
 
     float t = saturate(g_soft);
 
     float b_near1 = pow(t, 0.22);
     float b_near2 = pow(t, 0.50);
     float b_mid = pow(t, 0.90);
-    float b_far1 = pow(1.0 - t, 0.95);
-    float b_far2 = pow(1.0 - t, 1.35);
+    float b_far1 = pow(1.0 - t, 1.55);
+    float b_far2 = pow(1.0 - t, 2.65);
 
     float w_near1 = smoothstep(0.00, 0.40, t);
     float w_near2 = smoothstep(0.10, 0.60, t);
@@ -194,7 +194,7 @@ void CSDepthRaw(uint3 tid : SV_DispatchThreadID)
     float depth = lerp(curve_blend, dark_push, 1.00 - g_soft);
 
     depth = (depth - 0.5) * depth_aggression + 0.5;
-    depth = lerp(depth, curve_blend, 0.018);
+    depth = lerp(depth, curve_blend, 0.040);
     depth = (depth - 0.5) * depth_aggression + 0.5;
 
     // ripple reduction
@@ -206,11 +206,15 @@ void CSDepthRaw(uint3 tid : SV_DispatchThreadID)
     float noise_mask = smoothstep(0.35, 0.75, noise_energy);
     depth = lerp(depth, depth * 0.20, noise_mask * 0.18);
 
-    // Optional global depth boost (can help with very flat/indoor scenes)
+    // flat-region depth boost
+    float flatness = 1.0 - smoothstep(0.05, 0.10, c);
+    float boost_flat = lerp(1.10, 1.05, flatness);
     float depth_mid = 0.5;
-    float boost = 1.18;   // strong, safe expansion factor
-    depth = (depth - depth_mid) * boost + depth_mid;
+    depth = (depth - depth_mid) * boost_flat + depth_mid;
 
+    // non-flat boost
+    float boost_nonflat = lerp(1.10, 1.05, flatness);
+    depth = (depth - depth_mid) * boost_nonflat + depth_mid;
 
     depthRawOut[gid] = saturate(depth);
 
@@ -236,10 +240,9 @@ void CSDepthSmooth(uint3 tid : SV_DispatchThreadID)
     depth = d;
 
     float prev = depthPrevTex.Load(int3(gid, 0));
-    float prev = depthPrevTex.Load(int3(gid, 0));
 
     // === TEMPORAL MICRO‑CLAMP (restores text/UI stability) ===
-    float blended = lerp(prev, depth, 0.28);   // EMA
+    float blended = lerp(prev, depth, 0.14);   // EMA
 
     float maxDelta = 0.05; // per‑frame clamp
     float delta = blended - prev;
@@ -283,14 +286,13 @@ void CSParallaxSbs(uint3 tid : SV_DispatchThreadID)
     float2 uvEye;
     EyeMapping(gid, rightEye, localX, viewW, uvEye);
 
-    // Use depth bound at t1 (renderer binds smoothed depth SRV to slot 1).
-    // Address text jitter float depth = depthRawTex.Load(int3(gid, 0));
-    float depth = depthSmoothTex.Load(int3(gid, 0));
+    // Use depth bound at t1 (renderer binds smoothed depth SRV to slot 1 for pass 3).
+    float depth = depthRawTex.Load(int3(gid, 0));
 
     depth = saturate(depth);
 
     // Simple shaping; you can tweak exponent/scale
-    float shaped = pow(depth, 0.72);
+    float shaped = pow(depth, 1.0);
     float shift = parallaxPx * shaped;
 
     // Optional clamp for zoom-out (mirrors your original behaviour)

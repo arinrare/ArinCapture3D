@@ -84,8 +84,8 @@ public:
     void SetStereoDepthLevel(int level);
     int GetStereoDepthLevel() const { return stereoDepthLevel_; }
 
-    // Stereo parallax strength. Range [0,100] percent.
-    void SetStereoParallaxStrengthPercent(int percent) { stereoParallaxStrengthPercent_ = (percent < 0 ? 0 : (percent > 100 ? 100 : percent)); }
+    // Stereo parallax strength. Range [0,50] percent.
+    void SetStereoParallaxStrengthPercent(int percent) { stereoParallaxStrengthPercent_ = (percent < 0 ? 0 : (percent > 50 ? 50 : percent)); }
     int GetStereoParallaxStrengthPercent() const { return stereoParallaxStrengthPercent_; }
 
     // Stereo shader selection.
@@ -222,8 +222,8 @@ private:
     OverlayPosition overlayPosition_ = OverlayPosition::TopLeft;
 
     bool stereoEnabled_ = false;
-    int stereoDepthLevel_ = 12; // [1,20]
-    int stereoParallaxStrengthPercent_ = 50; // [0,100]
+    int stereoDepthLevel_ = 10; // [1,20]
+    int stereoParallaxStrengthPercent_ = 20; // [0,50]
 
     StereoShaderMode stereoShaderMode_ = StereoShaderMode::Depth3Pass;
 

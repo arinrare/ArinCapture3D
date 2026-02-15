@@ -51,6 +51,16 @@ add_executable(ArinCaptureSBS
 
 set_target_properties(ArinCaptureSBS PROPERTIES WIN32_EXECUTABLE TRUE)
 
+# MSVC can fail with LNK1168 if the previous output EXE is still held open
+# (e.g., crash handler, AV scan, or a lingering running instance). Removing
+# the existing output before linking avoids the overwrite path.
+if (WIN32)
+    add_custom_command(TARGET ArinCaptureSBS PRE_LINK
+        COMMAND ${CMAKE_COMMAND} -E rm -f "$<TARGET_FILE:ArinCaptureSBS>"
+        VERBATIM
+    )
+endif()
+
 target_link_libraries(ArinCaptureSBS
     d3d11
     d3dcompiler

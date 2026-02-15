@@ -5,8 +5,8 @@
 struct AppSettings {
     // Stereo
     bool stereoEnabled = false;
-    int stereoDepthLevel = 12;              // [1,20]
-    int stereoParallaxStrengthPercent = 50; // [0,100]
+    int stereoDepthLevel = 10;              // [1,20]
+    int stereoParallaxStrengthPercent = 20; // [0,50]
 
     // Output / presentation
     bool vsyncEnabled = true;

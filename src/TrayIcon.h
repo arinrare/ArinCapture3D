@@ -89,7 +89,7 @@ private:
     bool excludeFromCaptureEnabled_ = false;
 
     bool stereoEnabled_ = false;
-    int stereoDepthLevel_ = 12;
+    int stereoDepthLevel_ = 10;
 
     bool vsyncEnabled_ = true;
 };
