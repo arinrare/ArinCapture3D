@@ -1,5 +1,5 @@
 # ArinCapture
-### Beta version: 1.1.1
+### Beta version: 1.1.2
 
 ## Depth‑From‑Luma (DFL‑S) — A Hybrid Perceptual Depth Estimator
 This project uses a custom depth‑from‑luma technique designed for real‑time VR parallax conversion with any window or monitor as the source.

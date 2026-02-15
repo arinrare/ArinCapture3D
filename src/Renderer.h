@@ -116,9 +116,6 @@ private:
     UINT swapW_ = 0;
     UINT swapH_ = 0;
 
-    ID3D11Texture2D* backbufferReadback_ = nullptr;
-    int debugReadbackFrames_ = 0;
-
     // Shader-based blit path (enables scaling + future stereo shaders)
     ID3D11VertexShader* vs_ = nullptr;
     ID3D11PixelShader* psStandard_ = nullptr;

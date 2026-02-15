@@ -308,6 +308,22 @@ void Renderer::EnsureDepthStereoResources(UINT outW, UINT outH) {
     if (!device_) return;
     if (outW == 0 || outH == 0) return;
 
+    auto supportsTypedUavStore = [&](DXGI_FORMAT fmt) -> bool {
+        if (!device_) return false;
+        UINT support1 = 0;
+        if (FAILED(device_->CheckFormatSupport(fmt, &support1))) return false;
+        if ((support1 & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE) == 0) return false;
+
+        // Prefer checking support2 for explicit typed UAV store capability (D3D11.1+), but don't require it.
+        D3D11_FEATURE_DATA_FORMAT_SUPPORT2 support2{};
+        support2.InFormat = fmt;
+        if (SUCCEEDED(device_->CheckFeatureSupport(D3D11_FEATURE_FORMAT_SUPPORT2, &support2, sizeof(support2)))) {
+            if ((support2.OutFormatSupport2 & D3D11_FORMAT_SUPPORT2_UAV_TYPED_STORE) == 0) return false;
+        }
+
+        return true;
+    };
+
     const bool okExisting = (
         depthRawTex_ && depthRawSrv_ && depthRawUav_ &&
         depthSmoothTex_ && depthSmoothSrv_ && depthSmoothUav_ &&
@@ -388,40 +404,72 @@ void Renderer::EnsureDepthStereoResources(UINT outW, UINT outH) {
     if (!createDepthTex("depthPrev0", &depthPrevTex_[0], &depthPrevSrv_[0], &depthPrevUav_[0])) return;
     if (!createDepthTex("depthPrev1", &depthPrevTex_[1], &depthPrevSrv_[1], &depthPrevUav_[1])) return;
 
-    // Output SBS image (RGBA8) with UAV+SRV.
+    // Output SBS image with UAV+SRV.
     {
-        D3D11_TEXTURE2D_DESC td{};
-        td.Width = outW;
-        td.Height = outH;
-        td.MipLevels = 1;
-        td.ArraySize = 1;
-        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        td.SampleDesc.Count = 1;
-        td.Usage = D3D11_USAGE_DEFAULT;
-        td.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
-        HRESULT hr = device_->CreateTexture2D(&td, nullptr, &stereoOutTex_);
-        if (FAILED(hr) || !stereoOutTex_) {
-            Log::Error("EnsureDepthStereoResources: CreateTexture2D(stereoOut) failed");
-            return;
+        auto tryCreateStereoOut = [&](DXGI_FORMAT fmt) -> bool {
+            ID3D11Texture2D* tex = nullptr;
+            ID3D11ShaderResourceView* srv = nullptr;
+            ID3D11UnorderedAccessView* uav = nullptr;
+
+            D3D11_TEXTURE2D_DESC td{};
+            td.Width = outW;
+            td.Height = outH;
+            td.MipLevels = 1;
+            td.ArraySize = 1;
+            td.Format = fmt;
+            td.SampleDesc.Count = 1;
+            td.Usage = D3D11_USAGE_DEFAULT;
+            td.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+
+            HRESULT hr = device_->CreateTexture2D(&td, nullptr, &tex);
+            if (FAILED(hr) || !tex) return false;
+
+            D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
+            sd.Format = td.Format;
+            sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+            sd.Texture2D.MipLevels = 1;
+            hr = device_->CreateShaderResourceView(tex, &sd, &srv);
+            if (FAILED(hr) || !srv) {
+                tex->Release();
+                return false;
+            }
+
+            D3D11_UNORDERED_ACCESS_VIEW_DESC ud{};
+            ud.Format = td.Format;
+            ud.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+            ud.Texture2D.MipSlice = 0;
+            hr = device_->CreateUnorderedAccessView(tex, &ud, &uav);
+            if (FAILED(hr) || !uav) {
+                srv->Release();
+                tex->Release();
+                return false;
+            }
+
+            stereoOutTex_ = tex;
+            stereoOutSrv_ = srv;
+            stereoOutUav_ = uav;
+            return true;
+        };
+
+        // Prefer float formats for UAV writes if possible.
+        const DXGI_FORMAT candidates[] = {
+            DXGI_FORMAT_R16G16B16A16_FLOAT,
+            DXGI_FORMAT_R32G32B32A32_FLOAT,
+            DXGI_FORMAT_R8G8B8A8_UNORM,
+        };
+
+        for (DXGI_FORMAT fmt : candidates) {
+            // Keep the support check as a fast pre-filter, but rely on actual Create* calls.
+            if (fmt != DXGI_FORMAT_R8G8B8A8_UNORM && !supportsTypedUavStore(fmt)) {
+                continue;
+            }
+            if (tryCreateStereoOut(fmt)) {
+                break;
+            }
         }
 
-        D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
-        sd.Format = td.Format;
-        sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-        sd.Texture2D.MipLevels = 1;
-        hr = device_->CreateShaderResourceView(stereoOutTex_, &sd, &stereoOutSrv_);
-        if (FAILED(hr) || !stereoOutSrv_) {
-            Log::Error("EnsureDepthStereoResources: CreateShaderResourceView(stereoOut) failed");
-            return;
-        }
-
-        D3D11_UNORDERED_ACCESS_VIEW_DESC ud{};
-        ud.Format = td.Format;
-        ud.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
-        ud.Texture2D.MipSlice = 0;
-        hr = device_->CreateUnorderedAccessView(stereoOutTex_, &ud, &stereoOutUav_);
-        if (FAILED(hr) || !stereoOutUav_) {
-            Log::Error("EnsureDepthStereoResources: CreateUnorderedAccessView(stereoOut) failed");
+        if (!stereoOutTex_ || !stereoOutSrv_ || !stereoOutUav_) {
+            Log::Error("EnsureDepthStereoResources: failed to create stereoOut (no compatible format)");
             return;
         }
     }
@@ -785,6 +833,17 @@ static UINT DivRoundUp(UINT a, UINT b) {
     return (a + b - 1) / b;
 }
 
+static const char* DxgiFormatName(DXGI_FORMAT fmt) {
+    switch (fmt) {
+    case DXGI_FORMAT_R8G8B8A8_UNORM: return "R8G8B8A8_UNORM";
+    case DXGI_FORMAT_B8G8R8A8_UNORM: return "B8G8R8A8_UNORM";
+    case DXGI_FORMAT_R16G16B16A16_FLOAT: return "R16G16B16A16_FLOAT";
+    case DXGI_FORMAT_R32G32B32A32_FLOAT: return "R32G32B32A32_FLOAT";
+    case DXGI_FORMAT_R32_FLOAT: return "R32_FLOAT";
+    default: return "(other)";
+    }
+}
+
 bool Renderer::Init(HWND hWnd, UINT width, UINT height, DXGI_FORMAT format, ID3D11Device* device, ID3D11DeviceContext* context) {
 
     Log::Info("Renderer::Init called");
@@ -1055,25 +1114,6 @@ bool Renderer::Init(HWND hWnd, UINT width, UINT height, DXGI_FORMAT format, ID3D
     // Default crop is identity.
     ClearSourceCrop();
 
-    // Create a staging texture for optional backbuffer readback diagnostics.
-    D3D11_TEXTURE2D_DESC rb = {};
-    rb.Width = width;
-    rb.Height = height;
-    rb.MipLevels = 1;
-    rb.ArraySize = 1;
-    rb.Format = format;
-    rb.SampleDesc.Count = 1;
-    rb.SampleDesc.Quality = 0;
-    rb.Usage = D3D11_USAGE_STAGING;
-    rb.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    rb.BindFlags = 0;
-    rb.MiscFlags = 0;
-    hr = device_->CreateTexture2D(&rb, nullptr, &backbufferReadback_);
-    if (FAILED(hr) || !backbufferReadback_) {
-        Log::Error("Renderer::Init: failed to create backbuffer readback staging texture");
-    }
-    debugReadbackFrames_ = 0;
-
     Log::Info("Renderer initialized successfully.");
     return true;
 }
@@ -1086,7 +1126,6 @@ bool Renderer::Resize(UINT width, UINT height) {
     swapH_ = height;
 
     if (rtv_) { rtv_->Release(); rtv_ = nullptr; }
-    if (backbufferReadback_) { backbufferReadback_->Release(); backbufferReadback_ = nullptr; }
 
     HRESULT hr = swapChain_->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, swapChainFlags_);
     if (FAILED(hr)) {
@@ -1107,22 +1146,7 @@ bool Renderer::Resize(UINT width, UINT height) {
         return false;
     }
 
-    D3D11_TEXTURE2D_DESC backDesc;
-    backBuffer->GetDesc(&backDesc);
-
-    D3D11_TEXTURE2D_DESC rb = {};
-    rb.Width = backDesc.Width;
-    rb.Height = backDesc.Height;
-    rb.MipLevels = 1;
-    rb.ArraySize = 1;
-    rb.Format = backDesc.Format;
-    rb.SampleDesc.Count = 1;
-    rb.Usage = D3D11_USAGE_STAGING;
-    rb.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    hr = device_->CreateTexture2D(&rb, nullptr, &backbufferReadback_);
     backBuffer->Release();
-
-    debugReadbackFrames_ = 0;
     return true;
 }
 
@@ -1134,7 +1158,6 @@ bool Renderer::RefreshSwapChainForCurrentWindow() {
     LogSwapChainContainingOutput(swapChain_, "Renderer::RefreshSwapChainForCurrentWindow: before");
 
     if (rtv_) { rtv_->Release(); rtv_ = nullptr; }
-    if (backbufferReadback_) { backbufferReadback_->Release(); backbufferReadback_ = nullptr; }
 
     // Preserve the intended backbuffer size.
     // Using 0,0 would resize to the window client size, which can differ across runs/configs.
@@ -1160,24 +1183,9 @@ bool Renderer::RefreshSwapChainForCurrentWindow() {
         return false;
     }
 
-    D3D11_TEXTURE2D_DESC backDesc{};
-    backBuffer->GetDesc(&backDesc);
-
-    D3D11_TEXTURE2D_DESC rb = {};
-    rb.Width = backDesc.Width;
-    rb.Height = backDesc.Height;
-    rb.MipLevels = 1;
-    rb.ArraySize = 1;
-    rb.Format = backDesc.Format;
-    rb.SampleDesc.Count = 1;
-    rb.Usage = D3D11_USAGE_STAGING;
-    rb.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    hr = device_->CreateTexture2D(&rb, nullptr, &backbufferReadback_);
     backBuffer->Release();
 
-    Log::Info("Renderer::RefreshSwapChainForCurrentWindow: backbuffer " + std::to_string((int)backDesc.Width) + "x" + std::to_string((int)backDesc.Height) + " fmt " + std::to_string((int)backDesc.Format));
     LogSwapChainContainingOutput(swapChain_, "Renderer::RefreshSwapChainForCurrentWindow: after");
-    debugReadbackFrames_ = 0;
     return true;
 }
 
@@ -1524,6 +1532,12 @@ void Renderer::Render(ID3D11Texture2D* srcTex, float depth) {
                 context_->Draw(3, 0);
                 UnbindPSResource(context_, 0);
 
+                // IMPORTANT: If we plan to use downTex_ as an SRV (either in the compute stereo path
+                // or the final present pass), it must not still be bound as an RTV.
+                // Leaving it bound can cause SRV sampling to return undefined values (often all zeros),
+                // which manifests as intermittent black flicker when new frames arrive.
+                context_->OMSetRenderTargets(0, nullptr, nullptr);
+
                 downDirty_ = false;
             }
 
@@ -1540,15 +1554,6 @@ void Renderer::Render(ID3D11Texture2D* srcTex, float depth) {
 
     bool depthStereoPresented = false;
     const bool wantDepthCompute = (stereoShaderMode_ == StereoShaderMode::Depth3Pass);
-
-    // Diagnostic: log the stereo shader path once so Debug/Release behavior can be compared via logs.
-    static bool s_loggedStereoPathOnce = false;
-    if (!s_loggedStereoPathOnce) {
-        Log::Info(std::string("Renderer::Render stereo mode=") + std::to_string((int)stereoShaderMode_) +
-                  " wantDepthCompute=" + std::to_string((int)wantDepthCompute) +
-                  " stereoEnabled=" + std::to_string((int)stereoEnabled_));
-        s_loggedStereoPathOnce = true;
-    }
 
     ID3D11ComputeShader* csDepthRawActive = csDepthRaw_;
     ID3D11ComputeShader* csDepthSmoothActive = csDepthSmooth_;
@@ -1570,19 +1575,6 @@ void Renderer::Render(ID3D11Texture2D* srcTex, float depth) {
             // Fallback if we don't yet know the source size (e.g. first frame).
             computeW = backDesc.Width;
             computeH = backDesc.Height;
-        }
-
-        static bool s_loggedDepthComputeDimsOnce = false;
-        if (!s_loggedDepthComputeDimsOnce) {
-            Log::Info(
-                std::string("Renderer::Render depth compute dims=") +
-                std::to_string((int)computeW) + "x" + std::to_string((int)computeH) +
-                " (backbuffer=" + std::to_string((int)backDesc.Width) + "x" + std::to_string((int)backDesc.Height) +
-                ", src=" + std::to_string((int)srcW_) + "x" + std::to_string((int)srcH_) +
-                ", down=" + std::to_string((int)downW_) + "x" + std::to_string((int)downH_) +
-                ")"
-            );
-            s_loggedDepthComputeDimsOnce = true;
         }
 
         EnsureDepthStereoResources(computeW, computeH);
@@ -1702,13 +1694,6 @@ void Renderer::Render(ID3D11Texture2D* srcTex, float depth) {
             presentingDownscaled = true;
             depthStereoPresented = true;
         }
-    }
-
-    static bool s_loggedStereoPresentedOnce = false;
-    if (!s_loggedStereoPresentedOnce) {
-        Log::Info(std::string("Renderer::Render depthStereoPresented=") + std::to_string((int)depthStereoPresented) +
-                  " (0 means fallback to standard PS path)");
-        s_loggedStereoPresentedOnce = true;
     }
 
     // Final present pass: draw fullscreen triangle sampling srvToPresent into the backbuffer.
@@ -1837,26 +1822,6 @@ void Renderer::Render(ID3D11Texture2D* srcTex, float depth) {
     }
 
     // Note: Diagnostics overlay is drawn as part of the presented frame when possible.
-
-    // Diagnostic: read back a center pixel from the swapchain buffer for a few frames.
-    if (backbufferReadback_ && debugReadbackFrames_ < 6) {
-        context_->CopyResource(backbufferReadback_, backBuffer);
-        D3D11_MAPPED_SUBRESOURCE mapped = {};
-        HRESULT mhr = context_->Map(backbufferReadback_, 0, D3D11_MAP_READ, 0, &mapped);
-        if (SUCCEEDED(mhr) && mapped.pData) {
-            const UINT cx = backDesc.Width / 2;
-            const UINT cy = backDesc.Height / 2;
-            uint8_t* px = (uint8_t*)mapped.pData + (size_t)cy * mapped.RowPitch + (size_t)cx * 4;
-            Log::Info(
-                "Backbuffer sample (" + std::to_string(cx) + "," + std::to_string(cy) + "): "
-                "[B:" + std::to_string(px[0]) + ",G:" + std::to_string(px[1]) + ",R:" + std::to_string(px[2]) + ",A:" + std::to_string(px[3]) + "]"
-            );
-            context_->Unmap(backbufferReadback_, 0);
-        } else {
-            Log::Error("Backbuffer readback: Map failed");
-        }
-        ++debugReadbackFrames_;
-    }
 
     auto buildOverlayText = [&](wchar_t* outBuf, size_t outCch, UINT dpi, bool /*gotNewFrameThisTick*/) {
         const double presentFps = presentFps_;
@@ -2224,7 +2189,6 @@ void Renderer::Render(ID3D11Texture2D* srcTex, float depth) {
 void Renderer::Cleanup() {
     if (rtv_) { rtv_->Release(); rtv_ = nullptr; }
     if (swapChain_) { swapChain_->Release(); swapChain_ = nullptr; }
-    if (backbufferReadback_) { backbufferReadback_->Release(); backbufferReadback_ = nullptr; }
     if (srcSrv_) { srcSrv_->Release(); srcSrv_ = nullptr; }
     if (srcCopy_) { srcCopy_->Release(); srcCopy_ = nullptr; }
     if (sampler_) { sampler_->Release(); sampler_ = nullptr; }
@@ -2276,8 +2240,6 @@ void Renderer::Cleanup() {
     downW_ = downH_ = 0;
     downDirty_ = true;
     renderResIndex_ = 0;
-
-    debugReadbackFrames_ = 0;
     srcW_ = srcH_ = 0;
     srcFmt_ = DXGI_FORMAT_UNKNOWN;
 
