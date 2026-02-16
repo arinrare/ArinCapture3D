@@ -1,7 +1,9 @@
 # ArinCapture
+
 ### Beta version: 1.1.2
 
 ## Depth‑From‑Luma (DFL‑S) — A Hybrid Perceptual Depth Estimator
+
 This project uses a custom depth‑from‑luma technique designed for real‑time VR parallax conversion with any window or monitor as the source.
 The method combines multi‑sampled luminance analysis, contrast‑adaptive smoothing, mid‑tone stabilisation, multi‑curve depth shaping, and a set of targeted text/UI stabilisers.
 The result is a depth field that is:
@@ -26,12 +28,16 @@ This approach is built from scratch and tuned specifically for desktop/2D‑to�
 
 - **If 7-Zip is installed** (`7z.exe` in `C:\Program Files\7-Zip` or `C:\Program Files (x86)\7-Zip`), the script uses it.
 - **Otherwise it falls back to PowerShell `Compress-Archive`**.
-
-Notes:
-- If a tester sees a missing `VCRUNTIME*.dll` / `MSVCP*.dll` error, they need the **Microsoft Visual C++ Redistributable (x64)** installed.
-- For alpha debugging you can also ship the `.pdb` (the script includes it when present).
+- For debugging you can also ship the `.pdb` (the script includes it when present).
 - Avoid shipping **Debug** builds to testers unless they have a full Visual Studio dev environment: MSVC Debug builds typically depend on the Debug CRT (not provided by the normal VC++ Redistributable).
 - There is a **Debug** release build that will work when supplied with all the generated files.
+
+## Requirements:
+- Requires Windows 10 or 11 (64‑bit).
+- 32‑bit Windows is not supported.
+- If a tester sees a missing `VCRUNTIME*.dll` / `MSVCP*.dll` error, they need the **Microsoft Visual C++ Redistributable (x64)** installed.
+  The link: https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170#latest-supported-redistributable-version
+  Download and run the latest redistributable version for X64: vc_redist.x64.exe
 
 NOTE: The QoL features are pretty raw right now. Read these notes.
 
@@ -99,4 +105,6 @@ A log for each session will be generated in the same location as the executable.
 NOTE: With mouse input for SBS, there is an emulated a cursor based on the source window that is drawn in the capture window. Sometimes this may cause a duplicate cursor especially if the game draws their own cursor. For games that use the mouse, this cannot be avoided and the user will need to manage the mouse by either finding a way to hide it *in the game*, or make it as small as possible so as not to be distracting - on a per game basis.
 
 ## Current known bugs
+
 - Windows has a security feature to alert the user to when their screen is being captured, which presents as a yellow/orange border or L bracket on the corner of the captured screen. In Windows 11, the Microsoft 11 SDK allows ArinCapture to override this feature to prvent any unwanted on screen artifacts, but some older builds of Windows 10 do not have this ability. So in some cases you may get an L bracket on the right eye only, in the bottom right. To my knowledge, this is unavoidable. The best workaround is to use Monitor Select, where the L bracket becomes a small black square, which is not as noticeable.
+- On downscaled resolutions the text jitter can be a bit worse the lower resolution you set. This is because the depth passes are applied *after* the raw texture is downscaled. There is an enhancement issue on github thast aims to test applying the depth passes on the native texture before downscaling. This may affect performance and may not be implemented depending on test results.
