@@ -14,8 +14,8 @@ env:
   CMAKE_GENERATOR: Ninja Multi-Config
 
 jobs:
-  validate-tag:
-    name: Validate SemVer Tag
+  prepare:
+    name: Prepare
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get_version.outputs.version }}
@@ -44,7 +44,7 @@ jobs:
 
   build:
     name: Build Release
-    needs: validate-tag
+    needs: prepare
     runs-on: windows-latest
 
     steps:
@@ -82,7 +82,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ArinCaptureSBS-Release-${{ needs.validate-tag.outputs.version }}
+          name: ArinCaptureSBS-Release-${{ needs.prepare.outputs.version }}
           path: |
             dist/
             build/*.zip
@@ -90,7 +90,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [validate-tag, build]
+    needs: [prepare, build]
     runs-on: ubuntu-latest
 
     steps:
@@ -115,7 +115,7 @@ jobs:
           echo ""
 
           # Process Release artifacts
-          ARTIFACT_DIR="artifacts/ArinCaptureSBS-Release-${{ needs.validate-tag.outputs.version }}"
+          ARTIFACT_DIR="artifacts/ArinCaptureSBS-Release-${{ needs.prepare.outputs.version }}"
           if [ -d "$ARTIFACT_DIR" ]; then
             echo "=== Found artifact directory: $ARTIFACT_DIR ==="
             ls -la "$ARTIFACT_DIR"
@@ -124,7 +124,7 @@ jobs:
             # Create ZIP package from dist directory
             if [ -d "$ARTIFACT_DIR/dist" ]; then
               echo "=== Creating ZIP from dist directory ==="
-              (cd "$ARTIFACT_DIR/dist" && zip -r "../../../release-assets/ArinCaptureSBS-${{ needs.validate-tag.outputs.version }}.zip" .)
+              (cd "$ARTIFACT_DIR/dist" && zip -r "../../../release-assets/ArinCaptureSBS-${{ needs.prepare.outputs.version }}.zip" .)
               echo "Created ZIP package"
             else
               echo "Warning: dist directory not found"
@@ -143,10 +143,10 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-          name: ArinCaptureSBS v${{ needs.validate-tag.outputs.version }}
+          name: ArinCaptureSBS v${{ needs.prepare.outputs.version }}
           files: release-assets/*.zip
           draft: false
-          prerelease: ${{ contains(needs.validate-tag.outputs.version, '-') }}
+          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
