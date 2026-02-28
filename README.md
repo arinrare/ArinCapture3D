@@ -108,3 +108,10 @@ NOTE: With mouse input for SBS, there is an emulated a cursor based on the sourc
 
 - Windows has a security feature to alert the user to when their screen is being captured, which presents as a yellow/orange border or L bracket on the corner of the captured screen. In Windows 11, the Microsoft 11 SDK allows ArinCapture to override this feature to prvent any unwanted on screen artifacts, but some older builds of Windows 10 do not have this ability. So in some cases you may get an L bracket on the right eye only, in the bottom right. To my knowledge, this is unavoidable. The best workaround is to use Monitor Select, where the L bracket becomes a small black square, which is not as noticeable.
 - On downscaled resolutions the text jitter can be a bit worse the lower resolution you set. This is because the depth passes are applied *after* the raw texture is downscaled. There is an enhancement issue on github thast aims to test applying the depth passes on the native texture before downscaling. This may affect performance and may not be implemented depending on test results.
+
+# Attributions
+
+A big thank you to @qwertylesh for contributions to Alpha and Beta testing, and general all round awesome knowledge and research. And also one heck of an eagle eye for judging strength of 3D depth
+https://github.com/qwertylesh
+
+
