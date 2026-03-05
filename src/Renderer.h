@@ -223,6 +223,7 @@ private:
     int stereoParallaxStrengthPercent_ = 20; // [0,50]
 
     StereoShaderMode stereoShaderMode_ = StereoShaderMode::Depth3Pass;
+    bool threePassAvailable_ = false;
 
     bool vsyncEnabled_ = true;
 

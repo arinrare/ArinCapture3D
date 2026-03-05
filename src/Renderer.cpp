@@ -988,21 +988,28 @@ bool Renderer::Init(HWND hWnd, UINT width, UINT height, DXGI_FORMAT format, ID3D
         if (ThreePassShader::CompileDepthRawCS(&csBlob) && csBlob) {
             hr = device_->CreateComputeShader(csBlob->GetBufferPointer(), csBlob->GetBufferSize(), nullptr, &csDepthRaw_);
             csBlob->Release();
-        }   
+        }
 
         csBlob = nullptr;
         if (ThreePassShader::CompileDepthSmoothCS(&csBlob) && csBlob) {
             hr = device_->CreateComputeShader(csBlob->GetBufferPointer(), csBlob->GetBufferSize(), nullptr, &csDepthSmooth_);
             csBlob->Release();
-        }   
+        }
 
         csBlob = nullptr;
         if (ThreePassShader::CompileParallaxSbsCS(&csBlob) && csBlob) {
             hr = device_->CreateComputeShader(csBlob->GetBufferPointer(), csBlob->GetBufferSize(), nullptr, &csParallaxSbs_);
             csBlob->Release();
         }
-        if (!csDepthRaw_ || !csDepthSmooth_ || !csParallaxSbs_) {
-            Log::Info("Renderer::Init: Depth stereo compute shaders not available.");
+        
+        // Track if all 3-pass shaders compiled and created successfully
+        threePassAvailable_ = (csDepthRaw_ && csDepthSmooth_ && csParallaxSbs_);
+        
+        if (!threePassAvailable_) {
+            Log::Error("Renderer::Init: 3-pass depth stereo compute shaders failed to compile or create. Jitter will not work.");
+            Log::Error("Renderer::Init: csDepthRaw_=" + std::string(csDepthRaw_ ? "ok" : "null") +
+                       ", csDepthSmooth_=" + std::string(csDepthSmooth_ ? "ok" : "null") +
+                       ", csParallaxSbs_=" + std::string(csParallaxSbs_ ? "ok" : "null"));
         }
     }
 
@@ -1060,7 +1067,9 @@ bool Renderer::Init(HWND hWnd, UINT width, UINT height, DXGI_FORMAT format, ID3D
     // CS params constant buffer (dynamic, optional).
     {
         D3D11_BUFFER_DESC cbd{};
-        cbd.ByteWidth = 48; // must be multiple of 16
+        // Must match the HLSL cbuffer `CSParams` size in `3PassShader.cpp`.
+        // NOTE: Adding fields to the cbuffer requires updating this size.
+        cbd.ByteWidth = 64; // must be multiple of 16
         cbd.Usage = D3D11_USAGE_DYNAMIC;
         cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -1559,6 +1568,16 @@ void Renderer::Render(ID3D11Texture2D* srcTex, float depth) {
     ID3D11ComputeShader* csDepthSmoothActive = csDepthSmooth_;
     ID3D11ComputeShader* csParallaxActive = csParallaxSbs_;
 
+    // Check if 3-pass shader is available before attempting to use it
+    if (stereoEnabled_ && wantDepthCompute && !threePassAvailable_) {
+        static bool warned = false;
+        if (!warned) {
+            Log::Error("Renderer::Render: 3-pass depth stereo is enabled but not available. Jitter will not work.");
+            Log::Error("Renderer::Render: Check log for earlier compilation errors.");
+            warned = true;
+        }
+    }
+
     if (stereoEnabled_ && wantDepthCompute && srvToPresent && csDepthRawActive && csDepthSmoothActive && csParallaxActive && csParamsCb_ && sampler_) {
         // IMPORTANT: The compute-based depth stereo pipeline should operate at the resolution of the
         // texture being processed (native capture or downscaled), not at the swapchain backbuffer size.
@@ -1588,12 +1607,20 @@ void Renderer::Render(ID3D11Texture2D* srcTex, float depth) {
                 INT zoomLevel;
 
                 float parallaxPx;
+                float parallaxStrength; // [0,1] normalized parallax strength for adaptive processing
                 float frame;
-                float pad0[2];
 
+                // IMPORTANT: Match HLSL cbuffer packing.
+                // After 3 floats, HLSL leaves 1 float of padding in the 16-byte register,
+                // then the following float2 is aligned to the next 16-byte boundary.
+                float pad0;          // completes the 16-byte register (HLSL padding)
+                float pad0xy[2];     // corresponds to HLSL `float2 pad0`
                 float cropOffset[2];
                 float cropScale[2];
+                float pad1[2];       // trailing padding to 64 bytes
             };
+
+            static_assert(sizeof(CSParams) == 64, "CSParams must match HLSL cbuffer size");
 
             CSParams cb{};
             cb.outWidth = computeW;
@@ -1605,6 +1632,7 @@ void Renderer::Render(ID3D11Texture2D* srcTex, float depth) {
             const float maxShiftPx = 60.0f;
             const float parallaxStrength = (float)stereoParallaxStrengthPercent_ / 100.0f;
             cb.parallaxPx = t * maxShiftPx * parallaxStrength;
+            cb.parallaxStrength = parallaxStrength; // Pass to shader for adaptive processing
             cb.frame = depthFrame_;
             depthFrame_ += 1.0f;
 

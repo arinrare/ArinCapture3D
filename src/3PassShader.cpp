@@ -72,6 +72,7 @@ cbuffer CSParams : register(b0)
     int   zoomLevel;
 
     float parallaxPx;
+    float parallaxStrength; // [0,1] normalized parallax strength for adaptive processing
     float frame;
     float2 pad0;
 
@@ -132,6 +133,11 @@ void CSDepthRaw(uint3 tid : SV_DispatchThreadID)
 
     // === STRUCTURE PROTECTION MASK ===
     float structure = smoothstep(0.12, 0.35, c);
+    
+    // Text edge preservation - don't smooth sharp text edges
+    float textEdgeMask = smoothstep(0.25, 0.60, c);
+    structure = lerp(structure, 0.0, textEdgeMask);
+    
     float depth_aggression = lerp(0.55, 0.35, structure);
 
     // 5-tap cross smoothing
@@ -216,6 +222,11 @@ void CSDepthRaw(uint3 tid : SV_DispatchThreadID)
     float boost_nonflat = lerp(1.10, 1.05, flatness);
     depth = (depth - depth_mid) * boost_nonflat + depth_mid;
 
+    // Depth clamping for text stability - prevent drift
+    float depthClamp = 0.02; // Clamp to ±2% of 0.5
+    float center = 0.5;
+    depth = lerp(center, depth, saturate(abs(depth - center) / depthClamp));
+
     depthRawOut[gid] = saturate(depth);
 
 }
@@ -242,7 +253,10 @@ void CSDepthSmooth(uint3 tid : SV_DispatchThreadID)
     float prev = depthPrevTex.Load(int3(gid, 0));
 
     // === TEMPORAL MICRO‑CLAMP (restores text/UI stability) ===
-    float blended = lerp(prev, depth, 0.14);   // EMA
+    // Adaptive temporal blending based on parallax strength
+    // At high parallax, reduce temporal blending to prevent ghosting
+    float temporalWeight = 0.14 * (1.0 - parallaxStrength * 0.8); // Reduce to ~3% at max parallax
+    float blended = lerp(prev, depth, temporalWeight);
 
     float maxDelta = 0.05; // per‑frame clamp
     float delta = blended - prev;
