@@ -1,6 +1,6 @@
 # ArinCapture
 
-### Beta version: 1.1.2
+### Beta version: 1.1.3
 
 ## Depth‑From‑Luma (DFL‑S) — A Hybrid Perceptual Depth Estimator
 
