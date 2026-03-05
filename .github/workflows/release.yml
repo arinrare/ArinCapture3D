@@ -1,0 +1,152 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CMAKE_GENERATOR: Ninja Multi-Config
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      is_valid: ${{ steps.validate.outputs.is_valid }}
+    steps:
+      - name: Validate tag format
+        id: validate
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "is_valid=true" >> $GITHUB_OUTPUT
+            echo "Tag $TAG is valid semver"
+          else
+            echo "is_valid=false" >> $GITHUB_OUTPUT
+            echo "Tag $TAG is NOT valid semver"
+            exit 1
+          fi
+
+      - name: Extract version
+        id: get_version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"  # Remove 'v' prefix
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+  build:
+    name: Build Release
+    needs: prepare
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Ninja
+        run: |
+          choco install ninja -y
+          echo "C:\ProgramData\chocolatey\lib\ninja\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Configure CMake
+        run: |
+          cmake -S . -B build -G "Ninja Multi-Config" -DCMAKE_EXPORT_COMPILE_COMMANDS=TRUE
+
+      - name: Build
+        run: |
+          cmake --build build --config Release
+
+      - name: Install
+        run: |
+          cmake --install build --config Release --prefix dist
+
+      - name: Package
+        run: |
+          cpack -C Release --config build/CPackConfig.cmake
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArinCaptureSBS-Release-${{ needs.prepare.outputs.version }}
+          path: |
+            dist/
+            build/*.zip
+          retention-days: 7
+
+  create-release:
+    name: Create GitHub Release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          # Create release-assets directory
+          mkdir -p release-assets || { echo "Failed to create release-assets directory"; exit 1; }
+
+          # List all artifacts for debugging
+          echo "=== All artifacts ==="
+          find artifacts -type f || echo "No artifacts found"
+          echo ""
+
+          # Process Release artifacts
+          ARTIFACT_DIR="artifacts/ArinCaptureSBS-Release-${{ needs.prepare.outputs.version }}"
+          if [ -d "$ARTIFACT_DIR" ]; then
+            echo "=== Found artifact directory: $ARTIFACT_DIR ==="
+            ls -la "$ARTIFACT_DIR"
+            echo ""
+
+            # Create ZIP package from dist directory
+            if [ -d "$ARTIFACT_DIR/dist" ]; then
+              echo "=== Creating ZIP from dist directory ==="
+              (cd "$ARTIFACT_DIR/dist" && zip -r "../../../release-assets/ArinCaptureSBS-${{ needs.prepare.outputs.version }}.zip" .)
+              echo "Created ZIP package"
+            else
+              echo "Warning: dist directory not found"
+              exit 1
+            fi
+          else
+            echo "Warning: Artifact directory not found: $ARTIFACT_DIR"
+            exit 1
+          fi
+
+          # List prepared assets
+          echo "=== Release assets ==="
+          ls -lh release-assets/ || { echo "release-assets directory is empty or doesn't exist"; exit 1; }
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ArinCaptureSBS v${{ needs.prepare.outputs.version }}
+          files: release-assets/*.zip
+          draft: false
+          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
